@@ -1,0 +1,103 @@
+#!/bin/bash
+
+### Kerio Connect - Web Login 
+### Version 1.0
+### Author : Ebrahim <ebrahim@imami.net>
+### 2018-07-30
+
+configure()
+{
+	CONFIG_FILE="/etc/kerio-client.conf"
+	if [ -f $CONFIG_FILE ];
+	then
+		if [ ! -r $CONFIG_FILE ];
+		then
+			echo "Config file is not readable. ($CONFIG_FILE)"
+			exit 1
+		fi
+		. /etc/kerio-client.conf
+	fi
+}
+configure
+
+ACTION=$1
+for OPT in "$@"
+do
+    case $OPT in
+        --ssl)
+            ssl="true"
+            shift
+            ;;
+
+        -s=*|--server=*)
+            server="${OPT#*=}"
+            shift
+            ;;
+
+        -u=*|--username=*)
+            username="${OPT#*=}"
+            shift
+            ;;
+
+        -p=*|--password=*)
+            password="${OPT#*=}"
+            shift
+            ;;
+        *)
+            #ACTION="${OPT}"
+            ;;
+    esac
+done
+[[ $ssl = "true" ]] && BASE_URL="https://${server}" || BASE_URL="https://${server}"
+
+check()
+{
+	if [[ $ssl = "true" ]]; then
+		local _try=`curl -ks -H "Accept: text/html" -H "Content-Type: text/html" -X GET ${BASE_URL}/nonauth/getLoginType.js.php`
+	else
+		local _try=`curl -s -H "Accept: text/html" -H "Content-Type: text/html" -X GET ${BASE_URL}/nonauth/getLoginType.js.php`
+	fi
+	if echo "$_try" | grep -q "loginCommon"; then
+		return 0 # not logged in
+	else
+		return 1 # already logged in
+	fi
+}
+
+log_in()
+{
+	if check; then
+		echo -e "not logged in\ntrying to loging...";
+		if [[ $ssl = "true" ]]; then
+			_login_res==`curl -ks -d "kerio_username=$username&kerio_password=$password" --dump-header headers $BASE_URL/internal/dologin.php`
+		else
+			_login_res==`curl -s -d "kerio_username=$username&kerio_password=$password" --dump-header headers $BASE_URL/internal/dologin.php`
+		fi
+		echo "Logged in."
+	else
+		echo "already logged in"
+	fi
+}
+
+log_out()
+{
+	if [[ $ssl = "true" ]]; then
+		_logout_res=`curl -ks -H "Accept: text/html" -H "Content-Type: text/html" -X GET $BASE_URL/nonauth/logout.php`
+	else
+		_logout_res=`curl -s -H "Accept: text/html" -H "Content-Type: text/html" -X GET $BASE_URL/nonauth/logout.php`
+	fi
+	#echo $_logout_res
+	echo "Logged out."
+}
+
+
+case $ACTION in
+    "login")
+        log_in
+        ;;
+
+    "logout")
+        log_out
+        ;;
+esac
+
